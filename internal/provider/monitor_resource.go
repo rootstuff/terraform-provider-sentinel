@@ -93,6 +93,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				MarkdownDescription: "Sub-checks to run: `ssl`, `dns`, `domain`, `keyword`, `json`, `lighthouse` (plan gated).",
 				ElementType:         types.StringType,
 				Optional:            true,
+				Computed:            true,
 			},
 			"monitored_regions": schema.SetAttribute{
 				MarkdownDescription: "Region identifiers to check from. Defaults to all active regions.",
@@ -350,14 +351,13 @@ func (r *monitorResource) applyResponse(ctx context.Context, monitor map[string]
 		model.Port = types.Int64Null()
 	}
 
-	// check_types stays as configured: the server returns them in stored
-	// order and a Set comparison ignores order anyway, but an unset plan
-	// (null) must stay null rather than adopting the server's empty list.
-	if !model.CheckTypes.IsNull() {
-		if checkTypes, ok := fieldStringSlice(monitor, "check_types"); ok {
-			value, valueDiags := types.SetValueFrom(ctx, types.StringType, checkTypes)
-			diags.Append(valueDiags...)
-			model.CheckTypes = value
-		}
+	// Optional+Computed: always mirror the API (imports start from a null
+	// model and must still pick these up); Set comparison ignores order.
+	if checkTypes, ok := fieldStringSlice(monitor, "check_types"); ok {
+		value, valueDiags := types.SetValueFrom(ctx, types.StringType, checkTypes)
+		diags.Append(valueDiags...)
+		model.CheckTypes = value
+	} else {
+		model.CheckTypes = types.SetNull(types.StringType)
 	}
 }

@@ -184,3 +184,23 @@ func fieldStringSlice(m map[string]any, key string) ([]string, bool) {
 
 	return out, true
 }
+
+func fieldStringMap(m map[string]any, key string) (map[string]string, bool) {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return nil, false
+	}
+	raw, ok := v.(map[string]any)
+	if !ok || len(raw) == 0 {
+		return nil, false
+	}
+
+	out := make(map[string]string, len(raw))
+	for k, item := range raw {
+		if s, isString := item.(string); isString {
+			out[k] = s
+		}
+	}
+
+	return out, true
+}

@@ -22,11 +22,10 @@ resource "sentinel_monitor" "storefront" {
 
 ## Schema
 
-### Required
-
-- `url` (String) The URL (http monitors) or host (ping/port monitors) to check.
-
 ### Optional
+
+- `url` (String) The URL (http monitors) or host (ping/port monitors) to
+  check. Required for http/ping/port; omit for heartbeat/cron.
 
 - `monitor_type` (String) `http`, `ping`, `port`, `heartbeat`, or `cron`.
   Defaults to `http`. Changing it replaces the monitor. Heartbeat/cron

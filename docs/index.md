@@ -6,7 +6,8 @@ description: "Manage Sentinel uptime monitoring resources as code."
 # Sentinel Provider
 
 Manage [Sentinel](https://sentinel.rootstuff.io) uptime monitoring as code:
-monitors and outbound webhook endpoints, through the versioned Sentinel API.
+monitors, monitor groups, and outbound webhook endpoints, through the
+versioned Sentinel API.
 
 ## Example Usage
 

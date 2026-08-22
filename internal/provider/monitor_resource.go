@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 /*
@@ -57,6 +59,57 @@ type monitorResourceModel struct {
 	HeartbeatGrace        types.Int64   `tfsdk:"heartbeat_grace"`
 	PingURL               types.String  `tfsdk:"ping_url"`
 	Status                types.String  `tfsdk:"status"`
+	GroupID               types.Int64   `tfsdk:"group_id"`
+	AuthType              types.String  `tfsdk:"auth_type"`
+	AuthUsername          types.String  `tfsdk:"auth_username"`
+	AuthPassword          types.String  `tfsdk:"auth_password"`
+	KeywordSettings       types.Object  `tfsdk:"keyword_settings"`
+	JSONAssertionSettings types.Object  `tfsdk:"json_assertion_settings"`
+}
+
+// Nested attribute shapes for keyword_settings and json_assertion_settings.
+// The attr.Type maps must match the schema below exactly; ObjectValueFrom
+// validates against them when mirroring API responses into state.
+type keywordEntryModel struct {
+	Phrase        types.String `tfsdk:"phrase"`
+	Mode          types.String `tfsdk:"mode"`
+	CaseSensitive types.Bool   `tfsdk:"case_sensitive"`
+}
+
+type keywordSettingsModel struct {
+	Keywords     []keywordEntryModel `tfsdk:"keywords"`
+	SearchTarget types.String        `tfsdk:"search_target"`
+}
+
+type jsonAssertionEntryModel struct {
+	Path     types.String `tfsdk:"path"`
+	Operator types.String `tfsdk:"operator"`
+	Value    types.String `tfsdk:"value"`
+}
+
+type jsonAssertionSettingsModel struct {
+	Assertions []jsonAssertionEntryModel `tfsdk:"assertions"`
+}
+
+var keywordEntryAttrTypes = map[string]attr.Type{
+	"phrase":         types.StringType,
+	"mode":           types.StringType,
+	"case_sensitive": types.BoolType,
+}
+
+var keywordSettingsAttrTypes = map[string]attr.Type{
+	"keywords":      types.ListType{ElemType: types.ObjectType{AttrTypes: keywordEntryAttrTypes}},
+	"search_target": types.StringType,
+}
+
+var jsonAssertionEntryAttrTypes = map[string]attr.Type{
+	"path":     types.StringType,
+	"operator": types.StringType,
+	"value":    types.StringType,
+}
+
+var jsonAssertionSettingsAttrTypes = map[string]attr.Type{
+	"assertions": types.ListType{ElemType: types.ObjectType{AttrTypes: jsonAssertionEntryAttrTypes}},
 }
 
 func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -182,6 +235,80 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				MarkdownDescription: "The unique inbound ping URL for heartbeat/cron monitors. Treat as a secret: anyone holding it can fake health.",
 				Computed:            true,
 				Sensitive:           true,
+			},
+			"group_id": schema.Int64Attribute{
+				MarkdownDescription: "Id of the `sentinel_group` this monitor belongs to. Omit for ungrouped.",
+				Optional:            true,
+			},
+			"auth_type": schema.StringAttribute{
+				MarkdownDescription: "HTTP authentication for the check: `basic`, `bearer`, or `digest`. Omit for unauthenticated checks.",
+				Optional:            true,
+			},
+			"auth_username": schema.StringAttribute{
+				MarkdownDescription: "Username (or token, for bearer auth) sent with authenticated checks. Required with `auth_type`.",
+				Optional:            true,
+				Sensitive:           true,
+			},
+			"auth_password": schema.StringAttribute{
+				MarkdownDescription: "Password sent with authenticated checks. Required with `auth_type`. Write-only: the API never returns it, so drift on this attribute is not detected.",
+				Optional:            true,
+				Sensitive:           true,
+			},
+			"keyword_settings": schema.SingleNestedAttribute{
+				MarkdownDescription: "Content assertions run against the response body. Supplying keywords implies the `keyword` check type (plan gated). Mutually exclusive with `json_assertion_settings`.",
+				Optional:            true,
+				Attributes: map[string]schema.Attribute{
+					"keywords": schema.ListNestedAttribute{
+						MarkdownDescription: "Up to 10 phrases to assert on.",
+						Required:            true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"phrase": schema.StringAttribute{
+									MarkdownDescription: "Text to look for, max 500 characters.",
+									Required:            true,
+								},
+								"mode": schema.StringAttribute{
+									MarkdownDescription: "`must_contain` or `must_not_contain`.",
+									Required:            true,
+								},
+								"case_sensitive": schema.BoolAttribute{
+									MarkdownDescription: "Match case exactly. Defaults to false.",
+									Optional:            true,
+								},
+							},
+						},
+					},
+					"search_target": schema.StringAttribute{
+						MarkdownDescription: "`html` (raw markup) or `text` (rendered text). Defaults server-side.",
+						Optional:            true,
+					},
+				},
+			},
+			"json_assertion_settings": schema.SingleNestedAttribute{
+				MarkdownDescription: "Assertions run against a JSON API response. Supplying assertions implies the `json` check type (plan gated). Mutually exclusive with `keyword_settings`.",
+				Optional:            true,
+				Attributes: map[string]schema.Attribute{
+					"assertions": schema.ListNestedAttribute{
+						MarkdownDescription: "Up to 10 assertions on response fields.",
+						Required:            true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"path": schema.StringAttribute{
+									MarkdownDescription: "Dot-notation path into the response, e.g. `status` or `queue.depth`.",
+									Required:            true,
+								},
+								"operator": schema.StringAttribute{
+									MarkdownDescription: "`equals`, `not_equals`, `contains`, `not_contains`, `exists`, `not_exists`, `gt`, `gte`, `lt`, `lte`, `regex`, `not_regex`.",
+									Required:            true,
+								},
+								"value": schema.StringAttribute{
+									MarkdownDescription: "Comparison value, always given as a string (numeric comparisons coerce server-side). Omit for `exists`/`not_exists`.",
+									Optional:            true,
+								},
+							},
+						},
+					},
+				},
 			},
 			"status": schema.StringAttribute{
 				MarkdownDescription: "Current monitor status as last evaluated.",
@@ -360,9 +487,39 @@ func (r *monitorResource) payloadFrom(ctx context.Context, plan monitorResourceM
 		payload["accepted_status_codes"] = codes
 	}
 
+	// group_id and the auth trio are always sent explicitly: the API only
+	// updates keys present in the request, so omitting them would make
+	// "removed from configuration" silently mean "unchanged".
+	if plan.GroupID.IsNull() {
+		payload["group_id"] = nil
+	} else {
+		payload["group_id"] = plan.GroupID.ValueInt64()
+	}
+	if plan.AuthType.IsNull() {
+		payload["auth_type"] = nil
+		payload["auth_username"] = nil
+		payload["auth_password"] = nil
+	} else {
+		payload["auth_type"] = plan.AuthType.ValueString()
+		payload["auth_username"] = plan.AuthUsername.ValueString()
+		payload["auth_password"] = plan.AuthPassword.ValueString()
+	}
+
+	payload["keyword_settings"] = keywordSettingsPayload(ctx, plan.KeywordSettings, diags)
+	payload["json_assertion_settings"] = jsonAssertionSettingsPayload(ctx, plan.JSONAssertionSettings, diags)
+
 	if !plan.CheckTypes.IsNull() && !plan.CheckTypes.IsUnknown() {
 		var checkTypes []string
 		diags.Append(plan.CheckTypes.ElementsAs(ctx, &checkTypes, false)...)
+		// A settings block that was just removed must take its implied check
+		// type with it, or the server rejects the orphaned type for having
+		// no settings. The server re-adds the type when settings are present.
+		if payload["keyword_settings"] == nil {
+			checkTypes = withoutString(checkTypes, "keyword")
+		}
+		if payload["json_assertion_settings"] == nil {
+			checkTypes = withoutString(checkTypes, "json")
+		}
 		payload["check_types"] = checkTypes
 	}
 	if !plan.MonitoredRegions.IsNull() && !plan.MonitoredRegions.IsUnknown() {
@@ -507,6 +664,31 @@ func (r *monitorResource) applyResponse(ctx context.Context, monitor map[string]
 		}
 	}
 
+	// group_id, auth_type, and auth_username mirror the API for drift
+	// detection (the API returns auth_username to write-capable tokens);
+	// auth_password is write-only and stays exactly as configured.
+	if groupID, ok := fieldInt(monitor, "group_id"); ok {
+		model.GroupID = types.Int64Value(groupID)
+	} else {
+		model.GroupID = types.Int64Null()
+	}
+	if authType, ok := fieldString(monitor, "auth_type"); ok {
+		model.AuthType = types.StringValue(authType)
+	} else {
+		model.AuthType = types.StringNull()
+	}
+	if authUsername, ok := fieldString(monitor, "auth_username"); ok {
+		model.AuthUsername = types.StringValue(authUsername)
+	} else {
+		model.AuthUsername = types.StringNull()
+	}
+	if model.AuthPassword.IsUnknown() {
+		model.AuthPassword = types.StringNull()
+	}
+
+	model.KeywordSettings = keywordSettingsFromAPI(ctx, monitor, diags)
+	model.JSONAssertionSettings = jsonAssertionSettingsFromAPI(ctx, monitor, diags)
+
 	if regions, ok := fieldStringSlice(monitor, "monitored_regions"); ok {
 		value, valueDiags := types.SetValueFrom(ctx, types.StringType, regions)
 		diags.Append(valueDiags...)
@@ -529,4 +711,165 @@ func (r *monitorResource) applyResponse(ctx context.Context, monitor map[string]
 	} else {
 		model.CheckTypes = types.SetNull(types.StringType)
 	}
+}
+
+/* ------------------------------------------------------------------
+| keyword_settings / json_assertion_settings conversion
+|
+| Plan objects become the API's JSON shape (omitting unset optionals so
+| the server stores only what the practitioner declared), and API
+| responses become state objects, so both blocks drift-detect.
+|------------------------------------------------------------------ */
+
+func withoutString(values []string, remove string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v != remove {
+			out = append(out, v)
+		}
+	}
+
+	return out
+}
+
+// keywordSettingsPayload returns nil (JSON null) when the block is absent.
+func keywordSettingsPayload(ctx context.Context, object types.Object, diags *diag.Diagnostics) any {
+	if object.IsNull() || object.IsUnknown() {
+		return nil
+	}
+
+	var settings keywordSettingsModel
+	diags.Append(object.As(ctx, &settings, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return nil
+	}
+
+	keywords := make([]map[string]any, 0, len(settings.Keywords))
+	for _, keyword := range settings.Keywords {
+		entry := map[string]any{
+			"phrase": keyword.Phrase.ValueString(),
+			"mode":   keyword.Mode.ValueString(),
+		}
+		if !keyword.CaseSensitive.IsNull() {
+			entry["case_sensitive"] = keyword.CaseSensitive.ValueBool()
+		}
+		keywords = append(keywords, entry)
+	}
+
+	payload := map[string]any{"keywords": keywords}
+	if !settings.SearchTarget.IsNull() {
+		payload["search_target"] = settings.SearchTarget.ValueString()
+	}
+
+	return payload
+}
+
+func jsonAssertionSettingsPayload(ctx context.Context, object types.Object, diags *diag.Diagnostics) any {
+	if object.IsNull() || object.IsUnknown() {
+		return nil
+	}
+
+	var settings jsonAssertionSettingsModel
+	diags.Append(object.As(ctx, &settings, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return nil
+	}
+
+	assertions := make([]map[string]any, 0, len(settings.Assertions))
+	for _, assertion := range settings.Assertions {
+		entry := map[string]any{
+			"path":     assertion.Path.ValueString(),
+			"operator": assertion.Operator.ValueString(),
+		}
+		if !assertion.Value.IsNull() {
+			entry["value"] = assertion.Value.ValueString()
+		}
+		assertions = append(assertions, entry)
+	}
+
+	return map[string]any{"assertions": assertions}
+}
+
+func keywordSettingsFromAPI(ctx context.Context, monitor map[string]any, diags *diag.Diagnostics) types.Object {
+	raw, ok := monitor["keyword_settings"].(map[string]any)
+	if !ok {
+		return types.ObjectNull(keywordSettingsAttrTypes)
+	}
+
+	settings := keywordSettingsModel{
+		SearchTarget: types.StringNull(),
+		Keywords:     []keywordEntryModel{},
+	}
+	if target, ok := fieldString(raw, "search_target"); ok {
+		settings.SearchTarget = types.StringValue(target)
+	}
+
+	if entries, ok := raw["keywords"].([]any); ok {
+		for _, item := range entries {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			keyword := keywordEntryModel{
+				Phrase:        types.StringNull(),
+				Mode:          types.StringNull(),
+				CaseSensitive: types.BoolNull(),
+			}
+			if phrase, ok := fieldString(entry, "phrase"); ok {
+				keyword.Phrase = types.StringValue(phrase)
+			}
+			if mode, ok := fieldString(entry, "mode"); ok {
+				keyword.Mode = types.StringValue(mode)
+			}
+			if sensitive, ok := fieldBool(entry, "case_sensitive"); ok {
+				keyword.CaseSensitive = types.BoolValue(sensitive)
+			}
+			settings.Keywords = append(settings.Keywords, keyword)
+		}
+	}
+
+	object, objectDiags := types.ObjectValueFrom(ctx, keywordSettingsAttrTypes, settings)
+	diags.Append(objectDiags...)
+
+	return object
+}
+
+func jsonAssertionSettingsFromAPI(ctx context.Context, monitor map[string]any, diags *diag.Diagnostics) types.Object {
+	raw, ok := monitor["json_assertion_settings"].(map[string]any)
+	if !ok {
+		return types.ObjectNull(jsonAssertionSettingsAttrTypes)
+	}
+
+	settings := jsonAssertionSettingsModel{Assertions: []jsonAssertionEntryModel{}}
+
+	if entries, ok := raw["assertions"].([]any); ok {
+		for _, item := range entries {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			assertion := jsonAssertionEntryModel{
+				Path:     types.StringNull(),
+				Operator: types.StringNull(),
+				Value:    types.StringNull(),
+			}
+			if path, ok := fieldString(entry, "path"); ok {
+				assertion.Path = types.StringValue(path)
+			}
+			if operator, ok := fieldString(entry, "operator"); ok {
+				assertion.Operator = types.StringValue(operator)
+			}
+			if value, ok := fieldString(entry, "value"); ok {
+				assertion.Value = types.StringValue(value)
+			}
+			settings.Assertions = append(settings.Assertions, assertion)
+		}
+	}
+
+	object, objectDiags := types.ObjectValueFrom(ctx, jsonAssertionSettingsAttrTypes, settings)
+	diags.Append(objectDiags...)
+
+	return object
 }

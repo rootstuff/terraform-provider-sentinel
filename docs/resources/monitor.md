@@ -62,6 +62,33 @@ resource "sentinel_monitor" "storefront" {
   `cron` monitors.
 - `heartbeat_timezone` (String) Timezone for the cron schedule.
 - `heartbeat_grace` (Number) Grace seconds after a missed ping before alerting.
+- `group_id` (Number) Id of the `sentinel_group` this monitor belongs to.
+  Omit for ungrouped.
+- `auth_type` (String) HTTP authentication for the check: `basic`, `bearer`,
+  or `digest`.
+- `auth_username` (String, Sensitive) Username (or token, for bearer auth)
+  for authenticated checks. Required with `auth_type`.
+- `auth_password` (String, Sensitive) Password for authenticated checks.
+  Required with `auth_type`. Write-only: the API never returns it, so drift
+  on this attribute is not detected.
+- `keyword_settings` (Attributes) Content assertions on the response body.
+  Supplying keywords implies the `keyword` check type (plan gated). Mutually
+  exclusive with `json_assertion_settings`.
+  - `keywords` (Attributes List, Required) Up to 10 of:
+    - `phrase` (String, Required) Text to look for, max 500 characters.
+    - `mode` (String, Required) `must_contain` or `must_not_contain`.
+    - `case_sensitive` (Boolean) Match case exactly. Defaults to false.
+  - `search_target` (String) `html` (raw markup) or `text` (rendered text).
+- `json_assertion_settings` (Attributes) Assertions on a JSON API response.
+  Supplying assertions implies the `json` check type (plan gated). Mutually
+  exclusive with `keyword_settings`.
+  - `assertions` (Attributes List, Required) Up to 10 of:
+    - `path` (String, Required) Dot-notation path, e.g. `queue.depth`.
+    - `operator` (String, Required) `equals`, `not_equals`, `contains`,
+      `not_contains`, `exists`, `not_exists`, `gt`, `gte`, `lt`, `lte`,
+      `regex`, `not_regex`.
+    - `value` (String) Comparison value, always a string (numeric
+      comparisons coerce server-side). Omit for `exists`/`not_exists`.
 
 ### Read-Only
 
@@ -86,6 +113,40 @@ resource "sentinel_monitor" "db_replication" {
 output "replication_ping_url" {
   value     = sentinel_monitor.db_replication.ping_url
   sensitive = true
+}
+```
+
+## Content assertion examples
+
+Keyword matching asserts on page content; JSON assertions on API responses.
+One or the other per monitor, not both.
+
+```terraform
+resource "sentinel_monitor" "checkout" {
+  url      = "https://tickets.example.com"
+  group_id = sentinel_group.clients.id
+
+  keyword_settings = {
+    keywords = [
+      { phrase = "Add to cart", mode = "must_contain" },
+      { phrase = "Fatal error", mode = "must_not_contain" },
+    ]
+  }
+}
+
+resource "sentinel_monitor" "health_api" {
+  url = "https://api.example.com/health"
+
+  auth_type     = "bearer"
+  auth_username = var.health_api_token
+  auth_password = var.health_api_token
+
+  json_assertion_settings = {
+    assertions = [
+      { path = "status", operator = "equals", value = "ok" },
+      { path = "queue.depth", operator = "lt", value = "100" },
+    ]
+  }
 }
 ```
 

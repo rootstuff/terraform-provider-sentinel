@@ -1,8 +1,8 @@
 # Terraform Provider for Sentinel
 
 Manage [Sentinel](https://sentinel.rootstuff.io) uptime monitoring as code:
-monitors and outbound webhook endpoints, through the versioned Sentinel API
-(`/api/v1`).
+monitors, monitor groups, and outbound webhook endpoints, through the
+versioned Sentinel API (`/api/v1`).
 
 ```hcl
 terraform {
@@ -36,7 +36,12 @@ resource "sentinel_webhook_endpoint" "rootly" {
 ## Resources
 
 - `sentinel_monitor`: http/ping/port monitors with ssl, dns, domain, keyword,
-  json, and lighthouse sub-checks (plan gated by the account's subscription).
+  json, and lighthouse sub-checks (plan gated by the account's subscription),
+  including nested `keyword_settings` / `json_assertion_settings` blocks,
+  HTTP auth (`auth_type`, `auth_username`, write-only `auth_password`), and
+  `group_id` for group membership.
+- `sentinel_group`: the dashboard's monitor groups (one level of nesting).
+  Destroying a group ungroups its monitors, never deletes them.
 - `sentinel_webhook_endpoint`: outbound alert destinations with bearer,
   basic, or custom-header auth. `url`, `auth_token`, and `signing_secret`
   are write-only: the API never returns them, so they are stored in state

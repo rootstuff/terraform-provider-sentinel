@@ -88,6 +88,7 @@ func (p *sentinelProvider) Configure(ctx context.Context, req provider.Configure
 func (p *sentinelProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewMonitorResource,
+		NewGroupResource,
 		NewWebhookEndpointResource,
 	}
 }

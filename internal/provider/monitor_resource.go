@@ -41,8 +41,8 @@ type monitorResourceModel struct {
 	Port                  types.Int64   `tfsdk:"port"`
 	FriendlyName          types.String  `tfsdk:"friendly_name"`
 	CheckInterval         types.Float64 `tfsdk:"check_interval"`
-	CheckTypes            types.Set    `tfsdk:"check_types"`
-	MonitoredRegions      types.Set    `tfsdk:"monitored_regions"`
+	CheckTypes            types.Set     `tfsdk:"check_types"`
+	MonitoredRegions      types.Set     `tfsdk:"monitored_regions"`
 	SSLExpiryThreshold    types.Int64   `tfsdk:"ssl_expiry_threshold"`
 	DomainExpiryThreshold types.Int64   `tfsdk:"domain_expiry_threshold"`
 	RequestTimeout        types.Int64   `tfsdk:"request_timeout"`

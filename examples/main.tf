@@ -24,3 +24,10 @@ resource "sentinel_webhook_endpoint" "rootly" {
   auth_token = "tf-test-token"
   severities = ["critical", "warning"]
 }
+
+resource "sentinel_team_member" "oncall" {
+  email = "oncall@example.net"
+  role  = "editor"
+}
+
+data "sentinel_team_members" "all" {}

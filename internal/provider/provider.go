@@ -36,7 +36,7 @@ func (p *sentinelProvider) Metadata(_ context.Context, _ provider.MetadataReques
 
 func (p *sentinelProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manage Sentinel uptime monitoring resources (monitors, webhook endpoints) through the versioned Sentinel API.",
+		MarkdownDescription: "Manage Sentinel uptime monitoring resources (monitors, groups, webhook endpoints, team membership) through the versioned Sentinel API.",
 		Attributes: map[string]schema.Attribute{
 			"api_token": schema.StringAttribute{
 				MarkdownDescription: "Sentinel API token with the permissions the managed resources need (read plus create/update/delete). Falls back to the `SENTINEL_API_TOKEN` environment variable.",
@@ -90,9 +90,12 @@ func (p *sentinelProvider) Resources(_ context.Context) []func() resource.Resour
 		NewMonitorResource,
 		NewGroupResource,
 		NewWebhookEndpointResource,
+		NewTeamMemberResource,
 	}
 }
 
 func (p *sentinelProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource{
+		NewTeamMembersDataSource,
+	}
 }

@@ -1,8 +1,8 @@
 # Terraform Provider for Sentinel
 
 Manage [Sentinel](https://sentinel.rootstuff.io) uptime monitoring as code:
-monitors, monitor groups, and outbound webhook endpoints, through the
-versioned Sentinel API (`/api/v1`).
+monitors, monitor groups, outbound webhook endpoints, and team
+membership, through the versioned Sentinel API (`/api/v1`).
 
 ```hcl
 terraform {

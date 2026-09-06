@@ -38,8 +38,9 @@ resource "sentinel_webhook_endpoint" "rootly" {
 - `sentinel_monitor`: http/ping/port monitors with ssl, dns, domain, keyword,
   json, and lighthouse sub-checks (plan gated by the account's subscription),
   including nested `keyword_settings` / `json_assertion_settings` blocks,
-  HTTP auth (`auth_type`, `auth_username`, write-only `auth_password`), and
-  `group_id` for group membership.
+  HTTP auth (`auth_type`, `auth_username`, write-only `auth_password`),
+  `group_id` for group membership, and a `notification_settings` block for
+  alert routing (channels by severity, quiet hours).
 - `sentinel_group`: the dashboard's monitor groups (one level of nesting).
   Destroying a group ungroups its monitors, never deletes them.
 - `sentinel_webhook_endpoint`: outbound alert destinations with bearer,

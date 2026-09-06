@@ -89,6 +89,22 @@ resource "sentinel_monitor" "storefront" {
       `regex`, `not_regex`.
     - `value` (String) Comparison value, always a string (numeric
       comparisons coerce server-side). Omit for `exists`/`not_exists`.
+- `notification_settings` (Attributes) Alert routing for this monitor, the
+  same block the dashboard's Notifications page saves. Each block you
+  declare replaces the stored one; a block you omit is left as the dashboard
+  set it and never shows as drift. Custom recipients are dashboard-only.
+  - `enabled` (Boolean) Whether this monitor sends alerts at all.
+  - `channels` (Map of List of String) Which severities each channel fires
+    at. Keys: `email`, `sms`, `slack`, `discord`, `teams`, `webhook`,
+    `database`. Values are lists drawn from `critical`, `warning`, `info`.
+    A channel left out of the map is silent.
+  - `quiet_hours` (Attributes) A daily window during which alerts are held.
+    - `enabled` (Boolean) Whether quiet hours apply.
+    - `start` (String) Window start as `HH:MM`, 24-hour.
+    - `end` (String) Window end as `HH:MM`. Earlier than `start` crosses
+      midnight.
+    - `timezone` (String) IANA timezone, e.g. `America/Los_Angeles`.
+    - `bypass_critical` (Boolean) Let critical alerts through anyway.
 
 ### Read-Only
 
@@ -149,6 +165,46 @@ resource "sentinel_monitor" "health_api" {
   }
 }
 ```
+
+## Notification routing example
+
+Routing lives on each monitor. Declare the blocks you want to own; the
+dashboard keeps whatever you leave out (custom recipients above all).
+
+```terraform
+resource "sentinel_monitor" "checkout" {
+  url = "https://tickets.example.com"
+
+  notification_settings = {
+    enabled = true
+    channels = {
+      email   = ["critical", "warning"]
+      slack   = ["critical", "warning", "info"]
+      sms     = ["critical"]
+      webhook = ["critical", "warning"]
+    }
+    quiet_hours = {
+      enabled         = true
+      start           = "23:00"
+      end             = "06:00"
+      timezone        = "America/Los_Angeles"
+      bypass_critical = true
+    }
+  }
+}
+```
+
+Severities: `critical` is down (including failed ping, port, JSON and
+payment checks and a missed heartbeat) plus an expired or invalid
+certificate or domain; `warning` is a slow response, an expiring certificate
+or domain, a DNS error, and keyword, server-error and Lighthouse failures;
+`info` is recovery, resolution and DNS changes. If none of the declared
+channels lists a given severity, alerts at that severity fall back to each
+team member's own notification preferences rather than going silent, so
+list every severity you want routed. `sms` needs a verified phone on the
+team and the chat channels need their integration connected in the
+dashboard; the API accepts the routing either way and the channel stays
+quiet until it is set up.
 
 ## Import
 

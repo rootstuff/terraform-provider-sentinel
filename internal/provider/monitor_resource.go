@@ -65,6 +65,7 @@ type monitorResourceModel struct {
 	AuthPassword          types.String  `tfsdk:"auth_password"`
 	KeywordSettings       types.Object  `tfsdk:"keyword_settings"`
 	JSONAssertionSettings types.Object  `tfsdk:"json_assertion_settings"`
+	NotificationSettings  types.Object  `tfsdk:"notification_settings"`
 }
 
 // Nested attribute shapes for keyword_settings and json_assertion_settings.
@@ -110,6 +111,41 @@ var jsonAssertionEntryAttrTypes = map[string]attr.Type{
 
 var jsonAssertionSettingsAttrTypes = map[string]attr.Type{
 	"assertions": types.ListType{ElemType: types.ObjectType{AttrTypes: jsonAssertionEntryAttrTypes}},
+}
+
+// notification_settings is the per-monitor alert routing block the
+// dashboard's Notifications page saves. The API treats each top-level block
+// (enabled, channels, quiet_hours) as replace-if-sent, leave-if-omitted, so
+// the provider mirrors only the blocks the configuration declares; an
+// undeclared block never produces a diff, whatever the dashboard holds.
+type notificationQuietHoursModel struct {
+	Enabled        types.Bool   `tfsdk:"enabled"`
+	Start          types.String `tfsdk:"start"`
+	End            types.String `tfsdk:"end"`
+	Timezone       types.String `tfsdk:"timezone"`
+	BypassCritical types.Bool   `tfsdk:"bypass_critical"`
+}
+
+type notificationSettingsModel struct {
+	Enabled    types.Bool   `tfsdk:"enabled"`
+	Channels   types.Map    `tfsdk:"channels"`
+	QuietHours types.Object `tfsdk:"quiet_hours"`
+}
+
+var notificationChannelsType = types.MapType{ElemType: types.ListType{ElemType: types.StringType}}
+
+var notificationQuietHoursAttrTypes = map[string]attr.Type{
+	"enabled":         types.BoolType,
+	"start":           types.StringType,
+	"end":             types.StringType,
+	"timezone":        types.StringType,
+	"bypass_critical": types.BoolType,
+}
+
+var notificationSettingsAttrTypes = map[string]attr.Type{
+	"enabled":     types.BoolType,
+	"channels":    notificationChannelsType,
+	"quiet_hours": types.ObjectType{AttrTypes: notificationQuietHoursAttrTypes},
 }
 
 func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -305,6 +341,47 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 									MarkdownDescription: "Comparison value, always given as a string (numeric comparisons coerce server-side). Omit for `exists`/`not_exists`.",
 									Optional:            true,
 								},
+							},
+						},
+					},
+				},
+			},
+			"notification_settings": schema.SingleNestedAttribute{
+				MarkdownDescription: "Alert routing for this monitor, the same block the dashboard's Notifications page saves. Each block you declare (`enabled`, `channels`, `quiet_hours`) replaces the stored one; blocks you omit are left as the dashboard set them and never show as drift. Custom recipients are managed in the dashboard only.",
+				Optional:            true,
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether this monitor sends alerts at all.",
+						Optional:            true,
+					},
+					"channels": schema.MapAttribute{
+						MarkdownDescription: "Which severities each channel fires at. Keys are `email`, `sms`, `slack`, `discord`, `teams`, `webhook`, `database`; values are lists drawn from `critical`, `warning`, `info`. A channel left out of the map is silent.",
+						Optional:            true,
+						ElementType:         types.ListType{ElemType: types.StringType},
+					},
+					"quiet_hours": schema.SingleNestedAttribute{
+						MarkdownDescription: "A daily window during which alerts are held.",
+						Optional:            true,
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Whether quiet hours apply.",
+								Optional:            true,
+							},
+							"start": schema.StringAttribute{
+								MarkdownDescription: "Window start as `HH:MM` (24-hour).",
+								Optional:            true,
+							},
+							"end": schema.StringAttribute{
+								MarkdownDescription: "Window end as `HH:MM` (24-hour). Earlier than `start` means the window crosses midnight.",
+								Optional:            true,
+							},
+							"timezone": schema.StringAttribute{
+								MarkdownDescription: "IANA timezone the window is evaluated in, e.g. `America/Los_Angeles`.",
+								Optional:            true,
+							},
+							"bypass_critical": schema.BoolAttribute{
+								MarkdownDescription: "Let critical alerts through during quiet hours.",
+								Optional:            true,
 							},
 						},
 					},
@@ -507,6 +584,11 @@ func (r *monitorResource) payloadFrom(ctx context.Context, plan monitorResourceM
 
 	payload["keyword_settings"] = keywordSettingsPayload(ctx, plan.KeywordSettings, diags)
 	payload["json_assertion_settings"] = jsonAssertionSettingsPayload(ctx, plan.JSONAssertionSettings, diags)
+	// Omitted entirely when undeclared: the API leaves routing untouched only
+	// when the key is absent from the request.
+	if settings := notificationSettingsPayload(ctx, plan.NotificationSettings, diags); settings != nil {
+		payload["notification_settings"] = settings
+	}
 
 	if !plan.CheckTypes.IsNull() && !plan.CheckTypes.IsUnknown() {
 		var checkTypes []string
@@ -688,6 +770,7 @@ func (r *monitorResource) applyResponse(ctx context.Context, monitor map[string]
 
 	model.KeywordSettings = keywordSettingsFromAPI(ctx, monitor, diags)
 	model.JSONAssertionSettings = jsonAssertionSettingsFromAPI(ctx, monitor, diags)
+	model.NotificationSettings = notificationSettingsFromAPI(ctx, monitor, model.NotificationSettings, diags)
 
 	if regions, ok := fieldStringSlice(monitor, "monitored_regions"); ok {
 		value, valueDiags := types.SetValueFrom(ctx, types.StringType, regions)
@@ -869,6 +952,140 @@ func jsonAssertionSettingsFromAPI(ctx context.Context, monitor map[string]any, d
 	}
 
 	object, objectDiags := types.ObjectValueFrom(ctx, jsonAssertionSettingsAttrTypes, settings)
+	diags.Append(objectDiags...)
+
+	return object
+}
+
+// notificationSettingsPayload sends only the blocks the configuration
+// declares, so an omitted block is never reset server-side.
+func notificationSettingsPayload(ctx context.Context, object types.Object, diags *diag.Diagnostics) map[string]any {
+	if object.IsNull() || object.IsUnknown() {
+		return nil
+	}
+
+	var settings notificationSettingsModel
+	diags.Append(object.As(ctx, &settings, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return nil
+	}
+
+	payload := map[string]any{}
+	if !settings.Enabled.IsNull() && !settings.Enabled.IsUnknown() {
+		payload["enabled"] = settings.Enabled.ValueBool()
+	}
+	if !settings.Channels.IsNull() && !settings.Channels.IsUnknown() {
+		channels := map[string][]string{}
+		diags.Append(settings.Channels.ElementsAs(ctx, &channels, false)...)
+		payload["channels"] = channels
+	}
+	if !settings.QuietHours.IsNull() && !settings.QuietHours.IsUnknown() {
+		var quiet notificationQuietHoursModel
+		diags.Append(settings.QuietHours.As(ctx, &quiet, basetypes.ObjectAsOptions{})...)
+
+		window := map[string]any{}
+		if !quiet.Enabled.IsNull() {
+			window["enabled"] = quiet.Enabled.ValueBool()
+		}
+		if !quiet.Start.IsNull() {
+			window["start"] = quiet.Start.ValueString()
+		}
+		if !quiet.End.IsNull() {
+			window["end"] = quiet.End.ValueString()
+		}
+		if !quiet.Timezone.IsNull() {
+			window["timezone"] = quiet.Timezone.ValueString()
+		}
+		if !quiet.BypassCritical.IsNull() {
+			window["bypass_critical"] = quiet.BypassCritical.ValueBool()
+		}
+		payload["quiet_hours"] = window
+	}
+
+	return payload
+}
+
+// notificationSettingsFromAPI mirrors the API's routing block into state,
+// but only the parts the configuration (or prior state) declares: the API
+// returns everything the dashboard ever saved, and mirroring an undeclared
+// block would make every plan show a change the operator never asked for.
+func notificationSettingsFromAPI(ctx context.Context, monitor map[string]any, declaredObject types.Object, diags *diag.Diagnostics) types.Object {
+	if declaredObject.IsNull() || declaredObject.IsUnknown() {
+		return types.ObjectNull(notificationSettingsAttrTypes)
+	}
+
+	var declared notificationSettingsModel
+	diags.Append(declaredObject.As(ctx, &declared, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return types.ObjectNull(notificationSettingsAttrTypes)
+	}
+
+	raw, _ := monitor["notification_settings"].(map[string]any)
+
+	settings := notificationSettingsModel{
+		Enabled:    types.BoolNull(),
+		Channels:   types.MapNull(notificationChannelsType.ElemType),
+		QuietHours: types.ObjectNull(notificationQuietHoursAttrTypes),
+	}
+
+	if !declared.Enabled.IsNull() {
+		if enabled, ok := fieldBool(raw, "enabled"); ok {
+			settings.Enabled = types.BoolValue(enabled)
+		}
+	}
+
+	if !declared.Channels.IsNull() {
+		channels := map[string][]string{}
+		// PHP encodes an emptied map as [] rather than {}, so a non-map here
+		// simply means no channels.
+		if rawChannels, ok := raw["channels"].(map[string]any); ok {
+			for channel, severities := range rawChannels {
+				list := []string{}
+				if items, ok := severities.([]any); ok {
+					for _, item := range items {
+						if severity, ok := item.(string); ok {
+							list = append(list, severity)
+						}
+					}
+				}
+				channels[channel] = list
+			}
+		}
+		value, valueDiags := types.MapValueFrom(ctx, notificationChannelsType.ElemType, channels)
+		diags.Append(valueDiags...)
+		settings.Channels = value
+	}
+
+	if !declared.QuietHours.IsNull() {
+		rawQuiet, _ := raw["quiet_hours"].(map[string]any)
+		quiet := notificationQuietHoursModel{
+			Enabled:        types.BoolNull(),
+			Start:          types.StringNull(),
+			End:            types.StringNull(),
+			Timezone:       types.StringNull(),
+			BypassCritical: types.BoolNull(),
+		}
+		if enabled, ok := fieldBool(rawQuiet, "enabled"); ok {
+			quiet.Enabled = types.BoolValue(enabled)
+		}
+		if start, ok := fieldString(rawQuiet, "start"); ok {
+			quiet.Start = types.StringValue(start)
+		}
+		if end, ok := fieldString(rawQuiet, "end"); ok {
+			quiet.End = types.StringValue(end)
+		}
+		if timezone, ok := fieldString(rawQuiet, "timezone"); ok {
+			quiet.Timezone = types.StringValue(timezone)
+		}
+		if bypass, ok := fieldBool(rawQuiet, "bypass_critical"); ok {
+			quiet.BypassCritical = types.BoolValue(bypass)
+		}
+		value, valueDiags := types.ObjectValueFrom(ctx, notificationQuietHoursAttrTypes, quiet)
+		diags.Append(valueDiags...)
+		settings.QuietHours = value
+	}
+
+	object, objectDiags := types.ObjectValueFrom(ctx, notificationSettingsAttrTypes, settings)
 	diags.Append(objectDiags...)
 
 	return object

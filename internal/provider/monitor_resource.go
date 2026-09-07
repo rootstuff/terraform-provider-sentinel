@@ -134,6 +134,12 @@ type notificationSettingsModel struct {
 
 var notificationChannelsType = types.MapType{ElemType: types.ListType{ElemType: types.StringType}}
 
+// The in-app channel is stored server-side under its Laravel name. The
+// configuration may use the readable key; the provider translates on the
+// way out and, when the configuration used the alias, on the way back in.
+const inAppChannelAlias = "in_app"
+const inAppChannelStoredName = "database"
+
 var notificationQuietHoursAttrTypes = map[string]attr.Type{
 	"enabled":         types.BoolType,
 	"start":           types.StringType,
@@ -355,7 +361,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 						Optional:            true,
 					},
 					"channels": schema.MapAttribute{
-						MarkdownDescription: "Which severities each channel fires at. Keys are `email`, `sms`, `slack`, `discord`, `teams`, `webhook`, `database`; values are lists drawn from `critical`, `warning`, `info`. A channel left out of the map is silent.",
+						MarkdownDescription: "Which severities each channel fires at. Keys are `email`, `sms`, `slack`, `discord`, `teams`, `webhook`, `in_app` (the dashboard bell; its stored name `database` is also accepted, use one or the other); values are lists drawn from `critical`, `warning`, `info`. A channel left out of the map is silent.",
 						Optional:            true,
 						ElementType:         types.ListType{ElemType: types.StringType},
 					},
@@ -977,6 +983,10 @@ func notificationSettingsPayload(ctx context.Context, object types.Object, diags
 	if !settings.Channels.IsNull() && !settings.Channels.IsUnknown() {
 		channels := map[string][]string{}
 		diags.Append(settings.Channels.ElementsAs(ctx, &channels, false)...)
+		if severities, ok := channels[inAppChannelAlias]; ok {
+			channels[inAppChannelStoredName] = severities
+			delete(channels, inAppChannelAlias)
+		}
 		payload["channels"] = channels
 	}
 	if !settings.QuietHours.IsNull() && !settings.QuietHours.IsUnknown() {
@@ -1035,6 +1045,10 @@ func notificationSettingsFromAPI(ctx context.Context, monitor map[string]any, de
 	}
 
 	if !declared.Channels.IsNull() {
+		declaredChannels := map[string][]string{}
+		diags.Append(declared.Channels.ElementsAs(ctx, &declaredChannels, false)...)
+		_, usesAlias := declaredChannels[inAppChannelAlias]
+
 		channels := map[string][]string{}
 		// PHP encodes an emptied map as [] rather than {}, so a non-map here
 		// simply means no channels.
@@ -1047,6 +1061,9 @@ func notificationSettingsFromAPI(ctx context.Context, monitor map[string]any, de
 							list = append(list, severity)
 						}
 					}
+				}
+				if usesAlias && channel == inAppChannelStoredName {
+					channel = inAppChannelAlias
 				}
 				channels[channel] = list
 			}

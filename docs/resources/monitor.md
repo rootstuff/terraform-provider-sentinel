@@ -96,8 +96,10 @@ resource "sentinel_monitor" "storefront" {
   - `enabled` (Boolean) Whether this monitor sends alerts at all.
   - `channels` (Map of List of String) Which severities each channel fires
     at. Keys: `email`, `sms`, `slack`, `discord`, `teams`, `webhook`,
-    `database`. Values are lists drawn from `critical`, `warning`, `info`.
-    A channel left out of the map is silent.
+    `in_app`. Values are lists drawn from `critical`, `warning`, `info`.
+    A channel left out of the map is silent. `in_app` is the bell inside the
+    Sentinel dashboard, and the channel alerts fall back to during quiet
+    hours; its stored name `database` is also accepted, use one or the other.
   - `quiet_hours` (Attributes) A daily window during which alerts are held.
     - `enabled` (Boolean) Whether quiet hours apply.
     - `start` (String) Window start as `HH:MM`, 24-hour.
@@ -182,6 +184,7 @@ resource "sentinel_monitor" "checkout" {
       slack   = ["critical", "warning", "info"]
       sms     = ["critical"]
       webhook = ["critical", "warning"]
+      in_app  = ["critical", "warning", "info"]
     }
     quiet_hours = {
       enabled         = true

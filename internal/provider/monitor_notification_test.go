@@ -128,3 +128,36 @@ func TestNotificationSettingsEmptiedChannelsMirrorAsEmptyMap(t *testing.T) {
 		t.Fatalf("emptied channels should mirror as an empty map and enabled stay null\n got %v\nwant %v", mirrored, declared)
 	}
 }
+
+func TestNotificationSettingsInAppAliasTranslatesBothWays(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+
+	channels, _ := types.MapValueFrom(ctx, notificationChannelsType.ElemType, map[string][]string{"in_app": {"critical", "info"}, "email": {"critical"}})
+	declared, _ := types.ObjectValue(notificationSettingsAttrTypes, map[string]attr.Value{
+		"enabled":     types.BoolNull(),
+		"channels":    channels,
+		"quiet_hours": types.ObjectNull(notificationQuietHoursAttrTypes),
+	})
+
+	payload := notificationSettingsPayload(ctx, declared, &diags)
+	if diags.HasError() {
+		t.Fatalf("payload: %v", diags)
+	}
+	wantChannels := map[string][]string{"database": {"critical", "info"}, "email": {"critical"}}
+	if !reflect.DeepEqual(payload["channels"], wantChannels) {
+		t.Fatalf("alias must be sent under the stored name\n got %#v\nwant %#v", payload["channels"], wantChannels)
+	}
+
+	// The API answers with the stored name; state must come back as declared.
+	api := map[string]any{"notification_settings": map[string]any{
+		"channels": map[string]any{"database": []any{"critical", "info"}, "email": []any{"critical"}},
+	}}
+	mirrored := notificationSettingsFromAPI(ctx, api, declared, &diags)
+	if diags.HasError() {
+		t.Fatalf("mirror: %v", diags)
+	}
+	if !mirrored.Equal(declared) {
+		t.Fatalf("state must equal plan when the alias is used\n got %v\nwant %v", mirrored, declared)
+	}
+}

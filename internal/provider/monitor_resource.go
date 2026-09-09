@@ -706,31 +706,36 @@ func (r *monitorResource) applyResponse(ctx context.Context, monitor map[string]
 		model.PingURL = types.StringNull()
 	}
 
-	// Pure-Optional extras: configuration is the authority, so the API value
-	// only fills a null/unknown model (fresh imports and creates), never
-	// overrides what the practitioner declared.
-	if model.RequestBody.IsNull() || model.RequestBody.IsUnknown() {
+	// Pure-Optional extras: configuration is the authority. These attributes
+	// are Optional without Computed, so whatever the plan holds must be what
+	// lands in state: a value the practitioner declared stays as declared,
+	// and an attribute they left out stays null even when the API returns a
+	// stored value for it (the dashboard writes heartbeat_interval = 300 on
+	// every monitor type, so an HTTP monitor filled from the API produced
+	// "inconsistent result after apply", v0.5.1). Only an unknown value,
+	// one derived from another resource's output, is taken from the API.
+	if model.RequestBody.IsUnknown() {
 		if v, ok := fieldString(monitor, "request_body"); ok {
 			model.RequestBody = types.StringValue(v)
 		} else {
 			model.RequestBody = types.StringNull()
 		}
 	}
-	if model.SlowResponseThreshold.IsNull() || model.SlowResponseThreshold.IsUnknown() {
+	if model.SlowResponseThreshold.IsUnknown() {
 		if v, ok := fieldInt(monitor, "slow_response_threshold"); ok {
 			model.SlowResponseThreshold = types.Int64Value(v)
 		} else {
 			model.SlowResponseThreshold = types.Int64Null()
 		}
 	}
-	if model.HeartbeatInterval.IsNull() || model.HeartbeatInterval.IsUnknown() {
+	if model.HeartbeatInterval.IsUnknown() {
 		if v, ok := fieldInt(monitor, "heartbeat_interval"); ok {
 			model.HeartbeatInterval = types.Int64Value(v)
 		} else {
 			model.HeartbeatInterval = types.Int64Null()
 		}
 	}
-	if model.HeartbeatCron.IsNull() || model.HeartbeatCron.IsUnknown() {
+	if model.HeartbeatCron.IsUnknown() {
 		if v, ok := fieldString(monitor, "heartbeat_cron_expression"); ok {
 			model.HeartbeatCron = types.StringValue(v)
 		} else {
@@ -742,7 +747,7 @@ func (r *monitorResource) applyResponse(ctx context.Context, monitor map[string]
 	} else {
 		model.HeartbeatTimezone = types.StringNull()
 	}
-	if model.RequestHeaders.IsNull() || model.RequestHeaders.IsUnknown() {
+	if model.RequestHeaders.IsUnknown() {
 		if headers, ok := fieldStringMap(monitor, "request_headers"); ok {
 			value, valueDiags := types.MapValueFrom(ctx, types.StringType, headers)
 			diags.Append(valueDiags...)

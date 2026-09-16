@@ -91,6 +91,7 @@ func (p *sentinelProvider) Resources(_ context.Context) []func() resource.Resour
 		NewGroupResource,
 		NewWebhookEndpointResource,
 		NewTeamMemberResource,
+		NewBillingResource,
 	}
 }
 

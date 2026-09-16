@@ -31,3 +31,13 @@ resource "sentinel_team_member" "oncall" {
 }
 
 data "sentinel_team_members" "all" {}
+
+resource "sentinel_billing" "account" {
+  recipients    = ["accounting@example.net"]
+  company       = "Terraform Example LLC"
+  address_line1 = "1 Main St"
+  city          = "Sacramento"
+  state         = "CA"
+  postal_code   = "95814"
+  country       = "US"
+}

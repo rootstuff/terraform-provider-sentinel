@@ -2,7 +2,7 @@
 
 Manage [Sentinel](https://sentinel.rootstuff.io) uptime monitoring as code:
 monitors, monitor groups, outbound webhook endpoints, and team
-membership, through the versioned Sentinel API (`/api/v1`).
+membership, and the account's billing recipients and invoice details, through the versioned Sentinel API (`/api/v1`).
 
 ```hcl
 terraform {

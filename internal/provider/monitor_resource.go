@@ -361,7 +361,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 						Optional:            true,
 					},
 					"channels": schema.MapAttribute{
-						MarkdownDescription: "Which severities each channel fires at. Keys are `email`, `sms`, `slack`, `discord`, `teams`, `webhook`, `in_app` (the dashboard bell; its stored name `database` is also accepted, use one or the other); values are lists drawn from `critical`, `warning`, `info`. A channel left out of the map is silent.",
+						MarkdownDescription: "Which severities each channel fires at. Keys are `email`, `sms`, `slack`, `discord`, `teams`, `webhook`, `pagerduty`, `telegram`, `in_app` (the dashboard bell; its stored name `database` is also accepted, use one or the other); values are lists drawn from `critical`, `warning`, `info`. A channel left out of the map is silent.",
 						Optional:            true,
 						ElementType:         types.ListType{ElemType: types.StringType},
 					},

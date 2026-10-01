@@ -49,8 +49,9 @@ resource "sentinel_webhook_endpoint" "rootly" {
   from configuration and drift on them is not detected.
 
 The API token needs `read` plus whichever of `create`/`update`/`delete` the
-managed resources require; full API access is a Pro or Business plan
-feature.
+managed resources require. Every plan, the free one included, has full API
+access within its monitor limit; writes need a verified email on the account
+and are budgeted per team per hour (30 on Free, 300 on paid plans).
 
 ## Development
 

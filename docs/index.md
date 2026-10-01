@@ -27,8 +27,10 @@ resource "sentinel_monitor" "storefront" {
 ## Authentication
 
 Create an API token on Sentinel's API settings page with `read` plus
-whichever of `create`, `update`, and `delete` your resources need. Full API
-access is included in the Pro and Business plans.
+whichever of `create`, `update`, and `delete` your resources need. Every
+plan, the free one included, has full API access within its monitor limit;
+writes need a verified email on the account and are budgeted per team per
+hour (30 on Free, 300 on paid plans).
 
 ## Schema
 

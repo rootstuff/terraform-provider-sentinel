@@ -201,7 +201,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Computed:            true,
 			},
 			"monitored_regions": schema.SetAttribute{
-				MarkdownDescription: "Region identifiers to check from. Defaults to all active regions.",
+				MarkdownDescription: "Region identifiers to check from: `us-east`, `us-west`, `eu-central`, `ap-southeast`. Older names (`ash`, `pdx`, `nbg`, `sin`) are still accepted and treated as the same regions, so existing configurations need no change. Defaults to all active regions.",
 				ElementType:         types.StringType,
 				Optional:            true,
 				Computed:            true,
@@ -784,9 +784,21 @@ func (r *monitorResource) applyResponse(ctx context.Context, monitor map[string]
 	model.NotificationSettings = notificationSettingsFromAPI(ctx, monitor, model.NotificationSettings, diags)
 
 	if regions, ok := fieldStringSlice(monitor, "monitored_regions"); ok {
-		value, valueDiags := types.SetValueFrom(ctx, types.StringType, regions)
-		diags.Append(valueDiags...)
-		model.MonitoredRegions = value
+		// The API answers with its current region names (us-east) even when
+		// the configuration used an older one (ash). If the declared or
+		// prior value names the same places, keep it: no drift, and no
+		// "inconsistent result after apply".
+		var prior []string
+		if !model.MonitoredRegions.IsNull() && !model.MonitoredRegions.IsUnknown() {
+			diags.Append(model.MonitoredRegions.ElementsAs(ctx, &prior, false)...)
+		}
+		if prior != nil && sameRegions(prior, regions) {
+			// keep model.MonitoredRegions as declared
+		} else {
+			value, valueDiags := types.SetValueFrom(ctx, types.StringType, regions)
+			diags.Append(valueDiags...)
+			model.MonitoredRegions = value
+		}
 	} else {
 		model.MonitoredRegions = types.SetNull(types.StringType)
 	}

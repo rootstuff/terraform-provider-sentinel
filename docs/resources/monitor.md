@@ -37,8 +37,10 @@ resource "sentinel_monitor" "storefront" {
   apply). Defaults to the plan's interval.
 - `check_types` (Set of String) Sub-checks: `ssl`, `dns`, `domain`,
   `keyword`, `json`, `lighthouse` (plan gated).
-- `monitored_regions` (Set of String) Regions to check from. Defaults to all
-  active regions.
+- `monitored_regions` (Set of String) Regions to check from: `us-east`,
+  `us-west`, `eu-central`, `ap-southeast`. The older names (`ash`, `pdx`,
+  `nbg`, `sin`) are still accepted and treated as the same regions, so
+  existing configurations need no change. Defaults to all active regions.
 - `ssl_expiry_threshold` (Number) Days before SSL expiry to alert.
 - `domain_expiry_threshold` (Number) Days before domain expiry to alert.
   Domain expiry is tracked at the registrable domain (a subdomain monitor

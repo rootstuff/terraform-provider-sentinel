@@ -65,7 +65,7 @@ resource "sentinel_monitor" "storefront" {
 - `heartbeat_timezone` (String) Timezone for the cron schedule.
 - `heartbeat_grace` (Number) Grace seconds after a missed ping before alerting.
 - `confirmation_seconds` (Number) Seconds the outage must hold across regions
-  before an incident opens and alerts go out (0-300, default 30, 0 alerts at
+  before an incident opens and alerts go out (0-300, default 30 or 0 on a single-region monitor, 0 alerts at
   once). Not used for heartbeat/cron.
 - `group_id` (Number) Id of the `sentinel_group` this monitor belongs to.
   Omit for ungrouped.

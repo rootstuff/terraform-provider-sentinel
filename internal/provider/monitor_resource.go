@@ -275,7 +275,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Computed:            true,
 			},
 			"confirmation_seconds": schema.Int64Attribute{
-				MarkdownDescription: "Seconds the outage must hold across regions before an incident opens and alerts go out (0-300). Defaults to 30 server-side; 0 alerts at once. Not used for heartbeat/cron.",
+				MarkdownDescription: "Seconds the outage must hold across regions before an incident opens and alerts go out (0-300). Defaults server-side to 30, or 0 on a single-region monitor; 0 alerts at once. Not used for heartbeat/cron.",
 				Optional:            true,
 				Computed:            true,
 			},

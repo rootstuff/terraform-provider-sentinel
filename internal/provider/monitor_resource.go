@@ -57,6 +57,7 @@ type monitorResourceModel struct {
 	HeartbeatCron         types.String  `tfsdk:"heartbeat_cron_expression"`
 	HeartbeatTimezone     types.String  `tfsdk:"heartbeat_timezone"`
 	HeartbeatGrace        types.Int64   `tfsdk:"heartbeat_grace"`
+	ConfirmationSeconds   types.Int64   `tfsdk:"confirmation_seconds"`
 	PingURL               types.String  `tfsdk:"ping_url"`
 	Status                types.String  `tfsdk:"status"`
 	GroupID               types.Int64   `tfsdk:"group_id"`
@@ -270,6 +271,11 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"heartbeat_grace": schema.Int64Attribute{
 				MarkdownDescription: "Seconds of grace after a missed ping before alerting.",
+				Optional:            true,
+				Computed:            true,
+			},
+			"confirmation_seconds": schema.Int64Attribute{
+				MarkdownDescription: "Seconds the outage must hold across regions before an incident opens and alerts go out (0-300). Defaults to 30 server-side; 0 alerts at once. Not used for heartbeat/cron.",
 				Optional:            true,
 				Computed:            true,
 			},
@@ -559,6 +565,9 @@ func (r *monitorResource) payloadFrom(ctx context.Context, plan monitorResourceM
 	if !plan.HeartbeatGrace.IsNull() && !plan.HeartbeatGrace.IsUnknown() {
 		payload["heartbeat_grace"] = plan.HeartbeatGrace.ValueInt64()
 	}
+	if !plan.ConfirmationSeconds.IsNull() && !plan.ConfirmationSeconds.IsUnknown() {
+		payload["confirmation_seconds"] = plan.ConfirmationSeconds.ValueInt64()
+	}
 	if !plan.RequestHeaders.IsNull() && !plan.RequestHeaders.IsUnknown() {
 		headers := map[string]string{}
 		diags.Append(plan.RequestHeaders.ElementsAs(ctx, &headers, false)...)
@@ -699,6 +708,11 @@ func (r *monitorResource) applyResponse(ctx context.Context, monitor map[string]
 		model.HeartbeatGrace = types.Int64Value(grace)
 	} else {
 		model.HeartbeatGrace = types.Int64Null()
+	}
+	if seconds, ok := fieldInt(monitor, "confirmation_seconds"); ok {
+		model.ConfirmationSeconds = types.Int64Value(seconds)
+	} else {
+		model.ConfirmationSeconds = types.Int64Null()
 	}
 	if pingURL, ok := fieldString(monitor, "ping_url"); ok {
 		model.PingURL = types.StringValue(pingURL)

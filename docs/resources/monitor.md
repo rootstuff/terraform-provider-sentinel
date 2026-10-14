@@ -67,6 +67,9 @@ resource "sentinel_monitor" "storefront" {
 - `confirmation_seconds` (Number) Seconds the outage must hold across regions
   before an incident opens and alerts go out (0-300, default 30 or 0 on a single-region monitor, 0 alerts at
   once). Not used for heartbeat/cron.
+- `recovery_seconds` (Number) Seconds the target must stay up before the
+  incident closes and the recovery alert goes out (0-1800, default 60, 0 closes
+  at once). Not used for heartbeat/cron.
 - `group_id` (Number) Id of the `sentinel_group` this monitor belongs to.
   Omit for ungrouped.
 - `auth_type` (String) HTTP authentication for the check: `basic`, `bearer`,

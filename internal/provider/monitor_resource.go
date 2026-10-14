@@ -58,6 +58,7 @@ type monitorResourceModel struct {
 	HeartbeatTimezone     types.String  `tfsdk:"heartbeat_timezone"`
 	HeartbeatGrace        types.Int64   `tfsdk:"heartbeat_grace"`
 	ConfirmationSeconds   types.Int64   `tfsdk:"confirmation_seconds"`
+	RecoverySeconds       types.Int64   `tfsdk:"recovery_seconds"`
 	PingURL               types.String  `tfsdk:"ping_url"`
 	Status                types.String  `tfsdk:"status"`
 	GroupID               types.Int64   `tfsdk:"group_id"`
@@ -276,6 +277,11 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"confirmation_seconds": schema.Int64Attribute{
 				MarkdownDescription: "Seconds the outage must hold across regions before an incident opens and alerts go out (0-300). Defaults server-side to 30, or 0 on a single-region monitor; 0 alerts at once. Not used for heartbeat/cron.",
+				Optional:            true,
+				Computed:            true,
+			},
+			"recovery_seconds": schema.Int64Attribute{
+				MarkdownDescription: "Seconds the target must stay up before the incident closes and the recovery alert goes out (0-1800). Defaults server-side to 60; 0 closes at once. Not used for heartbeat/cron.",
 				Optional:            true,
 				Computed:            true,
 			},
@@ -568,6 +574,9 @@ func (r *monitorResource) payloadFrom(ctx context.Context, plan monitorResourceM
 	if !plan.ConfirmationSeconds.IsNull() && !plan.ConfirmationSeconds.IsUnknown() {
 		payload["confirmation_seconds"] = plan.ConfirmationSeconds.ValueInt64()
 	}
+	if !plan.RecoverySeconds.IsNull() && !plan.RecoverySeconds.IsUnknown() {
+		payload["recovery_seconds"] = plan.RecoverySeconds.ValueInt64()
+	}
 	if !plan.RequestHeaders.IsNull() && !plan.RequestHeaders.IsUnknown() {
 		headers := map[string]string{}
 		diags.Append(plan.RequestHeaders.ElementsAs(ctx, &headers, false)...)
@@ -713,6 +722,11 @@ func (r *monitorResource) applyResponse(ctx context.Context, monitor map[string]
 		model.ConfirmationSeconds = types.Int64Value(seconds)
 	} else {
 		model.ConfirmationSeconds = types.Int64Null()
+	}
+	if seconds, ok := fieldInt(monitor, "recovery_seconds"); ok {
+		model.RecoverySeconds = types.Int64Value(seconds)
+	} else {
+		model.RecoverySeconds = types.Int64Null()
 	}
 	if pingURL, ok := fieldString(monitor, "ping_url"); ok {
 		model.PingURL = types.StringValue(pingURL)

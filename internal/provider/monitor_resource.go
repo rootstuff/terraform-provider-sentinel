@@ -192,7 +192,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:            true,
 			},
 			"check_interval": schema.Float64Attribute{
-				MarkdownDescription: "Minutes between checks (0.5 to 60; plan limits apply). Defaults to the plan's interval.",
+				MarkdownDescription: "Minutes between checks (0.25 to 60; plan limits apply, 0.25 = 15 seconds on Business). Defaults to the plan's interval.",
 				Optional:            true,
 				Computed:            true,
 			},

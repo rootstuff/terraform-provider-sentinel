@@ -33,8 +33,8 @@ resource "sentinel_monitor" "storefront" {
   they take no `url`.
 - `port` (Number) TCP port. Required when `monitor_type` is `port`.
 - `friendly_name` (String) Display name in the dashboard and alerts.
-- `check_interval` (Number) Minutes between checks, 0.5 to 60 (plan limits
-  apply). Defaults to the plan's interval.
+- `check_interval` (Number) Minutes between checks, 0.25 to 60 (plan limits
+  apply, 0.25 = 15 seconds on Business). Defaults to the plan's interval.
 - `check_types` (Set of String) Sub-checks: `ssl`, `dns`, `domain`,
   `keyword`, `json`, `lighthouse` (plan gated).
 - `monitored_regions` (Set of String) Regions to check from: `us-east`,

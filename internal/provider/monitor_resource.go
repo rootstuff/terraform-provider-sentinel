@@ -295,16 +295,16 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:            true,
 			},
 			"auth_type": schema.StringAttribute{
-				MarkdownDescription: "HTTP authentication for the check: `basic`, `bearer`, or `digest`. Omit for unauthenticated checks.",
+				MarkdownDescription: "HTTP authentication for the check: `basic` (username and password) or `bearer` (a token sent as an `Authorization: Bearer` header). Omit for unauthenticated checks.",
 				Optional:            true,
 			},
 			"auth_username": schema.StringAttribute{
-				MarkdownDescription: "Username (or token, for bearer auth) sent with authenticated checks. Required with `auth_type`.",
+				MarkdownDescription: "Username for `basic` auth. Required with `basic`, not used with `bearer`.",
 				Optional:            true,
 				Sensitive:           true,
 			},
 			"auth_password": schema.StringAttribute{
-				MarkdownDescription: "Password sent with authenticated checks. Required with `auth_type`. Write-only: the API never returns it, so drift on this attribute is not detected.",
+				MarkdownDescription: "The password for `basic` auth, or the token for `bearer`. Required with `auth_type`. Stored encrypted; write-only: the API never returns it, so drift on this attribute is not detected.",
 				Optional:            true,
 				Sensitive:           true,
 			},
@@ -601,8 +601,32 @@ func (r *monitorResource) payloadFrom(ctx context.Context, plan monitorResourceM
 		payload["auth_username"] = nil
 		payload["auth_password"] = nil
 	} else {
-		payload["auth_type"] = plan.AuthType.ValueString()
-		payload["auth_username"] = plan.AuthUsername.ValueString()
+		authType := plan.AuthType.ValueString()
+		hasUsername := !plan.AuthUsername.IsNull() && !plan.AuthUsername.IsUnknown() && plan.AuthUsername.ValueString() != ""
+		switch authType {
+		case "basic":
+			if !plan.AuthUsername.IsUnknown() && !hasUsername {
+				diags.AddAttributeError(path.Root("auth_username"), "auth_username is required for basic auth",
+					"Set auth_username and auth_password, or use auth_type = \"bearer\" with the token in auth_password.")
+			}
+			payload["auth_username"] = plan.AuthUsername.ValueString()
+		case "bearer":
+			// The token travels in auth_password; the API stores no username
+			// for bearer and returns null, so sending one would only drift.
+			if hasUsername {
+				diags.AddAttributeError(path.Root("auth_username"), "auth_username is not used with bearer auth",
+					"Put the token in auth_password and remove auth_username.")
+			}
+			payload["auth_username"] = nil
+		default:
+			diags.AddAttributeError(path.Root("auth_type"), "Unknown auth_type",
+				fmt.Sprintf("auth_type must be \"basic\" or \"bearer\", got %q.", authType))
+		}
+		if !plan.AuthPassword.IsUnknown() && (plan.AuthPassword.IsNull() || plan.AuthPassword.ValueString() == "") {
+			diags.AddAttributeError(path.Root("auth_password"), "auth_password is required with auth_type",
+				"basic auth takes the password here, bearer auth takes the token.")
+		}
+		payload["auth_type"] = authType
 		payload["auth_password"] = plan.AuthPassword.ValueString()
 	}
 

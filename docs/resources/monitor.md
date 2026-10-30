@@ -72,13 +72,15 @@ resource "sentinel_monitor" "storefront" {
   at once). Not used for heartbeat/cron.
 - `group_id` (Number) Id of the `sentinel_group` this monitor belongs to.
   Omit for ungrouped.
-- `auth_type` (String) HTTP authentication for the check: `basic`, `bearer`,
-  or `digest`.
-- `auth_username` (String, Sensitive) Username (or token, for bearer auth)
-  for authenticated checks. Required with `auth_type`.
-- `auth_password` (String, Sensitive) Password for authenticated checks.
-  Required with `auth_type`. Write-only: the API never returns it, so drift
-  on this attribute is not detected.
+- `auth_type` (String) HTTP authentication for the check: `basic` (username
+  and password) or `bearer` (a token sent as an `Authorization: Bearer`
+  header). Omit for unauthenticated checks.
+- `auth_username` (String, Sensitive) Username for `basic` auth. Required with
+  `basic`, not used with `bearer`.
+- `auth_password` (String, Sensitive) The password for `basic` auth, or the
+  token for `bearer`. Required with `auth_type`. Stored encrypted and
+  write-only: the API never returns it, so drift on this attribute is not
+  detected.
 - `keyword_settings` (Attributes) Content assertions on the response body.
   Supplying keywords implies the `keyword` check type (plan gated). Mutually
   exclusive with `json_assertion_settings`.
@@ -164,8 +166,7 @@ resource "sentinel_monitor" "health_api" {
   url = "https://api.example.com/health"
 
   auth_type     = "bearer"
-  auth_username = var.health_api_token
-  auth_password = var.health_api_token
+  auth_password = var.health_api_token # the token itself, without "Bearer"
 
   json_assertion_settings = {
     assertions = [
